@@ -19,6 +19,7 @@ type
 proc `=destroy`*(rs: var ResourceSet) = 
   ## Deletes all resources in the reverse order to which they were added.
   for i in countdown(len(rs.arr)-1, 0):
+    echo &"ResourceSet cleanup {rs.arr[i].kind}"
     case rs.arr[i].kind
     of rkBuffer:
       glDeleteBuffers(1, rs.arr[i].handle.addr)
@@ -40,6 +41,13 @@ proc `=sink`*(rs: var ResourceSet; s: ResourceSet) =
 
 proc add*(rs: var ResourceSet; kind: ResourceKind; handle: GLuint|GLint) = 
   add(rs.arr, (kind: kind, handle: GLuint(handle)))
+
+proc take*(dest, src: var ResourceSet) = 
+  ## Takes all of the resources from `src` and adds them
+  ## to `dest`, giving `src` ownership. `src` will be empty
+  ## after the call.
+  dest.arr.add(src.arr)
+  setLen(src.arr, 0)
 
 # Mark all functions with gl calls with the EGL effect.
 type

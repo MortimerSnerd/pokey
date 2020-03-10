@@ -1,18 +1,15 @@
 import 
   comalg, glstate, glsupport, geom, opengl, platform, sdl2, sdl2/image, 
-  strformat, verts, vfont, zstats
+  strformat, tilesets, verts, vfont, zstats
 
 const
   WW=800
   WH=480
 
-proc runLoop(gls: GLState, window: WindowPtr) = 
+proc runLoop(gls: var GLState, window: WindowPtr, ts: Tileset) = 
   var running = true
 
   while running:
-    glClearColor(0, 0, 0, 0)
-    glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
-
     var ev{.noinit.}: sdl2.Event
 
     while pollEvent(ev):
@@ -24,6 +21,26 @@ proc runLoop(gls: GLState, window: WindowPtr) =
           running = false
         else:
           discard
+
+    glClearColor(0, 0, 0, 1)
+    glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
+
+    gls.uni.mvp = orthoProjectionYDown[float32](0, WW, 0, WH, -2, 2)
+    populate(gls.uniblk, GL_UNIFORM_BUFFER, gls.uni.addr, GL_DYNAMIC_DRAW)
+    glViewport(0, 0, WW, WH)
+
+    #TODO need a shader that takes a texture, umkay.
+    #use(gls.txShader)
+    #clear(gls.txbatch3)
+    bindAndConfigureArray(gls.vtxs, TxVtxDesc)
+    #ts.draw(gls.txbatch3, 0, (100.0f, 100.0f) @ (32.0f, 32.0f))
+    #submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+
+    use(gls.solidColor)
+    bindAndConfigureArray(gls.vtxs, VtxColorDesc)
+    clear(gls.colorb)
+    text(gls.colorb, "Eat more cheese", (100.0f, 100.0f))
+    submitAndDraw(gls.colorb, gls.vtxs, gls.indices, GL_LINES)
 
     swapWindow(window)
 
@@ -41,13 +58,15 @@ proc go() =
 
   let surface = getSurface(window)
   assert surface != nil, $sdl2.getError()
-  let gls = newGLState()
+
+  var gls = initGLState()
+  var ts1 = initTileset(gls.rset, "platformertiles.png", 32)
 
   showCursor(false)
   vfont.init()
 
   try:
-    runLoop(gls, window)
+    runLoop(gls, window, ts1)
     echo GC_getStatistics()
     zstats.printReport()
   except:
