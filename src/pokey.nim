@@ -6,7 +6,7 @@ const
   WW=800
   WH=480
 
-proc runLoop(gls: var GLState, window: WindowPtr, ts: Tileset) = 
+proc runLoop(gls: var GLState, window: WindowPtr, ts: var Tileset) = 
   var running = true
 
   while running:
@@ -30,16 +30,17 @@ proc runLoop(gls: var GLState, window: WindowPtr, ts: Tileset) =
     glViewport(0, 0, WW, WH)
 
     #TODO need a shader that takes a texture, umkay.
-    #use(gls.txShader)
-    #clear(gls.txbatch3)
+    use(gls.txShader)
+    clear(gls.txbatch3)
     bindAndConfigureArray(gls.vtxs, TxVtxDesc)
-    #ts.draw(gls.txbatch3, 0, (100.0f, 100.0f) @ (32.0f, 32.0f))
-    #submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+    ts.aboutToDraw()
+    ts.draw(gls.txbatch3, 1, (100.0f, 100.0f) @ (32.0f, 32.0f))
+    submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
 
     use(gls.solidColor)
     bindAndConfigureArray(gls.vtxs, VtxColorDesc)
     clear(gls.colorb)
-    text(gls.colorb, "Eat more cheese", (100.0f, 100.0f))
+    text(gls.colorb, "Eat more cheese", (100.0f, 100.0f), 1.5f)
     submitAndDraw(gls.colorb, gls.vtxs, gls.indices, GL_LINES)
 
     swapWindow(window)

@@ -9,7 +9,9 @@ type
     uniblk*: BufferObject ## Buffer object for the uniforms.
     indices*, vtxs*: BufferObject ## Buffer objects for geometry.
     colorb*: VertBatch[VtxColor,uint16] ## buffering for VtxColor vertices, so we can push batches out to `indices` & `vtxs`.
+    txbatch3*: VertBatch[TxVtx,uint16] ## for textured shapes.
     solidColor*: Program ## Shader for rendering of solid per vertex colors.
+    txShader*: Program ## Basic textured shader, TxVtx in.
 
 proc initGLState*() : GLState {.raises: [GLError,ValueError,IOError].} = 
   ## Creates and initializes a GLState object.
@@ -24,6 +26,10 @@ proc initGLState*() : GLState {.raises: [GLError,ValueError,IOError].} =
   result.solidColor = newProgram(result.rset, 
                                  [newShaderFromFile(result.rset, "color2d.vtx", GL_VERTEX_SHADER), 
                                   newShaderFromFile(result.rset, "color2d.frag", GL_FRAGMENT_SHADER)])
+  result.txbatch3 = newVertBatch[TxVtx,uint16]()
+  result.txShader = newProgram(result.rset, 
+                               [newShaderFromFile(result.rset, "basic_textured.vtx", GL_VERTEX_SHADER), 
+                                newShaderFromFile(result.rset, "basic_textured.frag", GL_FRAGMENT_SHADER)])
 
   glBindBufferBase(GL_UNIFORM_BUFFER, StdUniformsBinding, result.uniblk.handle)
   glEnable(GL_CULL_FACE)
