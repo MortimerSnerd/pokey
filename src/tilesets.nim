@@ -7,7 +7,7 @@ type
     ## tiles.
     file: string ## Relative path to image file that backs this.
     tex: Texture
-    gridDim: Positive ## Tiles are forced to be square, gridDim*gridDim
+    gridDim*: Positive ## Tiles are forced to be square, gridDim*gridDim
     tileTopLefts: seq[V2f] ## Topleft texture coordinates for each tile.
     tileTexDim: V2f ## Width and height of a tile in texture coordinates.
 
@@ -29,9 +29,8 @@ proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tile
   if result.tex.width mod gridDim != 0:
     raise newException(BadTileDims, &"Image dims {result.tex.width}, {result.tex.height} not divisible by {gridDim}")
 
-
-
-  let params = TextureParams(minFilter: GL_NEAREST, magFilter: GL_NEAREST)
+  applyParameters(result.tex, TextureParams(minFilter: GL_NEAREST, magFilter: GL_NEAREST))
+  
   let tw = result.tex.width div gridDim
   let th = result.tex.height div gridDim
 
@@ -43,8 +42,8 @@ proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tile
   for y in 0..<th:
     for x in 0..<tw:
       result.tileTopLefts[idx] = (float32(x) * result.tileTexDim.x, float32(y) * result.tileTexDim.y)
+      idx += 1
 
-  applyParameters(result.tex, params)
   # Transfer to callers resource set so we don't blow away the texture on exit.
   rset.take(lset)
 
@@ -53,6 +52,14 @@ proc aboutToDraw*(ts: TileSet) =
   ## from this tilemap.
   glActiveTexture(GL_TEXTURE0)
   glBindTexture(GL_TEXTURE_2D, ts.tex.handle)
+
+template withTileset*(ts: var TileSet; body: untyped) = 
+  try:
+    aboutToDraw(ts)
+    body
+  finally:
+    glActiveTexture(GL_TEXTURE0)
+    glBindTexture(GL_TEXTURE_2D, 0)
 
 proc draw*(ts: var Tileset; batch: VertBatch[TxVtx,uint16];  tile: Natural; dest: AABB2f; z: float32 = 0) {.raises: [].} = 
   ## Draws tile #`tile` to `dest`.
