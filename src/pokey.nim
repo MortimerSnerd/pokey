@@ -36,7 +36,7 @@ proc runLoop(gls: var GLState, window: WindowPtr, ts: var Tileset) =
         else:
           discard
 
-    glClearColor(0, 0, 0, 1)
+    glClearColor(0, 0, 1, 1)
     glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
     gls.uni.mvp = orthoProjectionYDown[float32](0, WW, 0, WH, -2, 2)
@@ -47,10 +47,13 @@ proc runLoop(gls: var GLState, window: WindowPtr, ts: var Tileset) =
     use(gls.txShader)
     clear(gls.txbatch3)
     bindAndConfigureArray(gls.vtxs, TxVtxDesc)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
     withTileset(ts):
-      ts.draw(gls.txbatch3, 1, (100.0f, 100.0f) @ (64.0f, 64.0f))
+      ts.draw(gls.txbatch3, 3, (100.0f, 100.0f) @ (64.0f, 64.0f))
       draw(bss, bs, ts, gls.txbatch3, (200.0f, 200.0f))
       submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+      glDisable(GL_BLEND)
 
     use(gls.solidColor)
     bindAndConfigureArray(gls.vtxs, VtxColorDesc)
