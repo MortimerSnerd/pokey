@@ -1,5 +1,5 @@
 import 
-  comalg, glstate, glsupport, geom, opengl, platform, sdl2, sdl2/image, 
+  blocksets, glstate, glsupport, geom, opengl, platform, sdl2, sdl2/image, 
   strformat, tilesets, verts, vfont, zstats
 
 const
@@ -8,6 +8,20 @@ const
 
 proc runLoop(gls: var GLState, window: WindowPtr, ts: var Tileset) = 
   var running = true
+
+  #DEBUGGERY
+  var bss: BlockSetSys
+  let bs = bss.newBlockSet([TilePlacement(dx: 0, dy: 0, tile: 0), 
+                    TilePlacement(dx: 1, dy: 0, tile: 1),
+                    TilePlacement(dx: 2, dy: 0, tile: 2), 
+                    TilePlacement(dx: 0, dy: 1, tile: 8), 
+                    TilePlacement(dx: 1, dy: 1, tile: 9), 
+                    TilePlacement(dx: 2, dy: 1, tile: 10), 
+                    TilePlacement(dx: 0, dy: 2, tile: 16),
+                    TilePlacement(dx: 1, dy: 2, tile: 17), 
+                    TilePlacement(dx: 2, dy: 2, tile: 18)])
+
+  echo repr(ts)
 
   while running:
     var ev{.noinit.}: sdl2.Event
@@ -33,9 +47,10 @@ proc runLoop(gls: var GLState, window: WindowPtr, ts: var Tileset) =
     use(gls.txShader)
     clear(gls.txbatch3)
     bindAndConfigureArray(gls.vtxs, TxVtxDesc)
-    ts.aboutToDraw()
-    ts.draw(gls.txbatch3, 1, (100.0f, 100.0f) @ (32.0f, 32.0f))
-    submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+    withTileset(ts):
+      ts.draw(gls.txbatch3, 1, (100.0f, 100.0f) @ (64.0f, 64.0f))
+      draw(bss, bs, ts, gls.txbatch3, (200.0f, 200.0f))
+      submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
 
     use(gls.solidColor)
     bindAndConfigureArray(gls.vtxs, VtxColorDesc)

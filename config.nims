@@ -35,7 +35,6 @@ task build, "Builds debug version":
     --infChecks:on
     --overflowChecks:on  # This is expensive for what we're doing.
 
-    # Not yet.
     #--gc:arc
 
     switch("path", "src")
