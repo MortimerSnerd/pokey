@@ -95,8 +95,18 @@ type
       ## we'll need to page them.  This is the 
       ## index of the first tile we should display.
 
+proc highlightMouseGrid(ts: Tileset; gls: var GLState) = 
+  ## Draw lines around the grid position where the mouse is.
+  let gridDim = float32(ts.gridDim)
+  var mx, my: cint
+  getMouseState(mx, my)
+  let gp = mouseToGridPos(ts, mx, my)
 
-#TODO how to push a new controller.  Return it from handleInput somehow?
+  drawingLines(gls, {Submit}):
+    addLines(gls.colorb, gp*gridDim @ (gridDim, gridDim),
+              proc (v: V2f, num: int) : VtxColor =
+                VtxColor(pos: v, color: WhiteG))
+
 proc selectTile(c: TilePicker; mouseX, mouseY: cint) : int = 
   let gp = mouseToGridPos(c.ts, mouseX, mouseY)
   let idx = int(gp.y) * c.tilesAcross + int(gp.x) + c.page
@@ -104,7 +114,6 @@ proc selectTile(c: TilePicker; mouseX, mouseY: cint) : int =
   if idx < 0 or idx >= numTiles(c.ts):
     -1
   else:
-    echo &"Jimmy: {idx}"
     idx
 
 proc tpkHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) = 
@@ -128,7 +137,6 @@ proc tpkHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
       if ev.button.button == BUTTON_LEFT:
         c.retval[] = selectTile(c, ev.button.x, ev.button.y)
         if c.retval[] >= 0:
-          echo "BOOT"
           return (Finished, nil)
 
     of MouseWheel:
@@ -174,6 +182,8 @@ proc tpkDraw(bc: Controller; gls: var GLState; dT: float32) =
 
   submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
 
+  highlightMouseGrid(c.ts, gls)
+
 proc newTilePicker*(ts: Tileset; retval: ptr int) : TilePicker = 
   ## Create a new tile picker that puts the index of the selected tile
   ## in `retval`, or a -1 if it is cancelled.
@@ -205,10 +215,8 @@ proc changeTile(c: BlocksetEditor, mouseX, mouseY: cint, tile: int) =
 
 proc bseResumed(bc: Controller) = 
   let c = BlocksetEditor(bc)
-  echo &"ASS {c.pickedTile} {numTiles(c.ts)}"
 
   if c.pickedTile >= 0 and c.pickedTile < numTiles(c.ts):
-    echo "yarrrrr"
     c.curTile = c.pickedTile
 
 proc bseHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) = 
@@ -247,17 +255,6 @@ proc bseHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
 
   return (Running, nil)
 
-proc highlightMouseGrid(ts: Tileset; gls: var GLState) = 
-  ## Draw lines around the grid position where the mouse is.
-  let gridDim = float32(ts.gridDim)
-  var mx, my: cint
-  getMouseState(mx, my)
-  let gp = mouseToGridPos(ts, mx, my)
-
-  drawingLines(gls, {Submit}):
-    addLines(gls.colorb, gp*gridDim @ (gridDim, gridDim),
-              proc (v: V2f, num: int) : VtxColor =
-                VtxColor(pos: v, color: WhiteG))
 
 proc bseDraw(bc: Controller; gls: var GLState; dT: float32) = 
   let c = BlocksetEditor(bc)
