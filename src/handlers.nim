@@ -16,11 +16,13 @@ type
       ## controllers on the active stack should be drawn before
       ## a draw call for this controller.
 
-    handleInput*: proc (c: Controller; dT: float) : InHandlerStatus
+    handleInput*: proc (c: Controller; dT: float32) : (InHandlerStatus, Controller)
       ## Function that's called to deal with input.  Happens before
       ## drawing.  Can be nil if there's no input handling.
+      ## Returns (state of the controller, nil | new controller that should
+      ## be activated on the next frame).
       
-    draw*: proc (c: Controller; gls: var GLState; dT: float) 
+    draw*: proc (c: Controller; gls: var GLState; dT: float32) 
       ## Responsible for drawing.  Should not assume it's the 
       ## only thing rendering, so no calls to swapWindow().
 
@@ -48,10 +50,27 @@ type
     Finished     ## This controller is done.  If this is returned, the corresponding draw call
                   ## will not be called.
 
-  ControllerManager* = object
+  ControllerManager* = ref object
     cs: seq[Controller]
 
-proc processFrame*(cm: var ControllerManager; gls: var GLState; dT: float32) : bool = 
+proc newControllerManager*() : ControllerManager = 
+  ControllerManager()
+
+proc add*(cm: ControllerManager; c: Controller)= 
+  ## Pushes `c` on the controller stack, making it the active
+  ## controller.
+  assert c != nil
+  let nc = len(cm.cs)
+
+  if nc > 0 and cm.cs[nc-1].paused != nil:
+      let cur = cm.cs[nc-1]
+      cur.paused(cur)
+
+  add(cm.cs, c)
+  if c.activated != nil:
+    c.activated(c)
+
+proc processFrame*(cm: ControllerManager; gls: var GLState; dT: float32) : bool = 
   ## Performs a single frame for the active controllers.  
   ## Returns false if the caller can exit, or if all controllers have been popped off
   ## the stack.
@@ -61,17 +80,34 @@ proc processFrame*(cm: var ControllerManager; gls: var GLState; dT: float32) : b
 
   let cur = cm.cs[nc-1]
 
+  var newHandler: Controller = nil
   try:
     if cur.handleInput != nil:
-      case cur.handleInput(cur, dT)
+      let handlerRet = cur.handleInput(cur, dT)
+
+      newHandler = handlerRet[1]
+      case handlerRet[0]
       of Finished:
         if cur.deactivated != nil:
           cur.deactivated(cur)
+
         if nc > 1:
-          let prev = cm.cs[nc-1]
+          let prev = cm.cs[nc-2]
           if prev.resumed != nil:
             prev.resumed(prev)
+
         discard pop(cm.cs)
+
+        if newHandler != nil:
+          # They are essentially replacing themselves with
+          # another controller.  We don't call add(ControllerManager) here,
+          # because we don't want the current top item to have
+          # paused called more than once on it.
+          if newHandler.activated != nil:
+            newHandler.activated(newHandler)
+
+          add(cm.cs, newHandler)
+          
         return true
 
       of Running:
@@ -90,6 +126,11 @@ proc processFrame*(cm: var ControllerManager; gls: var GLState; dT: float32) : b
       if ct.draw != nil:
         ct.draw(ct, gls, dT)
       inc(cnum)
+
+    # Activate the new handler, if one was returned by
+    # handleInput.
+    if newHandler != nil:
+      add(cm, newHandler)
       
   except:
     var e = getCurrentException()
@@ -101,17 +142,3 @@ proc processFrame*(cm: var ControllerManager; gls: var GLState; dT: float32) : b
 
   return len(cm.cs) > 0
 
-proc add*(cm: var ControllerManager; c: Controller)= 
-  ## Pushes `c` on the controller stack, making it the active
-  ## controller.
-  assert c != nil
-  let nc = len(cm.cs)
-
-  if nc > 0 and cm.cs[nc-1].paused != nil:
-      let cur = cm.cs[nc-1]
-      cur.paused(cur)
-
-  add(cm.cs, c)
-  if c.activated != nil:
-    c.activated(c)
-        

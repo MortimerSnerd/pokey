@@ -106,6 +106,6 @@ proc addLines*[V,I,T](vb: VertBatch[V,I];
   vtxs[1] = cvt((br.x, bb.topLeft.y), 1)
   vtxs[2] = cvt(br, 2)
   vtxs[3] = cvt((bb.topLeft.x, br.y), 3)
-  bb.vertices.add(vtxs)
-  bb.indices.add([base, base + 1, base + 1, base + 2, base + 2, base + 3, base + 3, base])
+  vb.vertices.add(vtxs)
+  vb.indices.add([base, base + 1, base + 1, base + 2, base + 2, base + 3, base + 3, base])
 

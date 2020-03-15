@@ -1,5 +1,5 @@
 import
-  geom, glsupport, opengl, sdl2, strformat, verts
+  geom, glstate, glsupport, opengl, sdl2, strformat, verts
 
 type
   Tileset* = object
@@ -47,15 +47,22 @@ proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tile
   # Transfer to callers resource set so we don't blow away the texture on exit.
   rset.take(lset)
 
-proc aboutToDraw*(ts: TileSet) = 
+proc numTiles*(ts: Tileset) : int = len(ts.tileTopLefts)
+
+proc aboutToDraw*(ts: TileSet; gls: var GLState) = 
   ## Call this before any batch of draw calls to set up GL state for drawing
   ## from this tilemap.
   glActiveTexture(GL_TEXTURE0)
   glBindTexture(GL_TEXTURE_2D, ts.tex.handle)
+  glEnable(GL_BLEND)
+  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+  use(gls.txShader)
+  clear(gls.txbatch3)
+  bindAndConfigureArray(gls.vtxs, TxVtxDesc)
 
-template withTileset*(ts: var TileSet; body: untyped) = 
+template withTileset*(ts: var TileSet; gls: var GLState; body: untyped) = 
   try:
-    aboutToDraw(ts)
+    aboutToDraw(ts, gls)
     body
   finally:
     glActiveTexture(GL_TEXTURE0)
@@ -73,5 +80,14 @@ proc draw*(ts: var Tileset; batch: VertBatch[TxVtx,uint16];  tile: Natural; dest
     TxVtx(pos: vec3(dbr, z),                 tc: tcbr), 
     TxVtx(pos: (dest.topLeft.x, dbr.y, z),  tc: (tctl.x, tcbr.y))])
 
+proc wrapToRange*(ts: Tileset; tileIdx: int) : int = 
+  ## If the tileIdx is out of range for this tileset, 
+  ## wraps it around back to a valid number.
+  if tileIdx < 0:
+    return len(ts.tileTopLefts)-1
+  elif tileIdx >= len(ts.tileTopLefts):
+    return 0
+  else:
+    return tileIdx
 
 
