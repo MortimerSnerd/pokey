@@ -1,7 +1,7 @@
 ## Common types and functions for components
 ## that need to handle input and drawing.
 import
-  glstate, glsupport, strformat
+  glstate, strformat
 
 type
   Controller* = ref object of RootRef

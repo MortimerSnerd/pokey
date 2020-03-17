@@ -2,7 +2,7 @@
 ## that can be placed.
 import
   geom, glstate, glsupport, handlers, opengl, sdl2, 
-  strformat, tilesets, verts, vfont
+  tilesets, verts
 
 type
   BlockSetSys* = ref object

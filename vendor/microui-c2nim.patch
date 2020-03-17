@@ -1,0 +1,93 @@
+diff --git a/src/microui.h b/src/microui.h
+index e0b6766..32eebe2 100644
+--- a/src/microui.h
++++ b/src/microui.h
+@@ -3,13 +3,23 @@
+ **
+ ** This library is free software; you can redistribute it and/or modify it
+ ** under the terms of the MIT license. See `microui.c` for details.
++**
++** Generate nim version with: c2nim --cdecl microui.h
+ */
+ 
+ #ifndef MICROUI_H
+ #define MICROUI_H
+ 
++#if defined(__cplusplus)
++extern "C" {
++#endif
++
+ #define MU_VERSION "2.00"
+ 
++#ifdef C2NIM
++#header "microui.h"
++#endif
++
+ #define MU_COMMANDLIST_SIZE     (256 * 1024)
+ #define MU_ROOTLIST_SIZE        32
+ #define MU_CONTAINERSTACK_SIZE  32
+@@ -19,12 +29,21 @@
+ #define MU_CONTAINERPOOL_SIZE   48
+ #define MU_TREENODEPOOL_SIZE    48
+ #define MU_MAX_WIDTHS           16
++#ifdef C2NIM
++typedef float MU_REAL;
++#else
+ #define MU_REAL                 float
++#endif
+ #define MU_REAL_FMT             "%.3g"
+ #define MU_SLIDER_FMT           "%.2f"
+ #define MU_MAX_FMT              127
+ 
++#ifdef C2NIM
++#def mu_stack(T, n) struct {int idx; T items[n];}
++#else
+ #define mu_stack(T, n)          struct { int idx; T items[n]; }
++#endif 
++
+ #define mu_min(a, b)            ((a) < (b) ? (a) : (b))
+ #define mu_max(a, b)            ((a) > (b) ? (a) : (b))
+ #define mu_clamp(x, a, b)       mu_min(b, mu_max(a, x))
+@@ -169,13 +188,19 @@ typedef struct {
+   mu_Color colors[MU_COLOR_MAX];
+ } mu_Style;
+ 
++#ifdef C2NIM
++  #def PRIVSTYLE_NAME privstyle
++#else
++  #define PRIVSTYLE_NAME _style
++#endif
++
+ struct mu_Context {
+   /* callbacks */
+   int (*text_width)(mu_Font font, const char *str, int len);
+   int (*text_height)(mu_Font font);
+   void (*draw_frame)(mu_Context *ctx, mu_Rect rect, int colorid);
+   /* core state */
+-  mu_Style _style;
++  mu_Style PRIVSTYLE_NAME;
+   mu_Style *style;
+   mu_Id hover;
+   mu_Id focus;
+@@ -213,9 +238,13 @@ struct mu_Context {
+ };
+ 
+ 
++#ifndef C2NIM
++// Constructor functions clash with type names, and
++// not necessary with Nim type literals.
+ mu_Vec2 mu_vec2(int x, int y);
+ mu_Rect mu_rect(int x, int y, int w, int h);
+ mu_Color mu_color(int r, int g, int b, int a);
++#endif
+ 
+ void mu_init(mu_Context *ctx);
+ void mu_begin(mu_Context *ctx);
+@@ -293,4 +322,7 @@ void mu_end_popup(mu_Context *ctx);
+ void mu_begin_panel_ex(mu_Context *ctx, const char *name, int opt);
+ void mu_end_panel(mu_Context *ctx);
+ 
++#if defined(__cplusplus)
++}
++#endif
+ #endif

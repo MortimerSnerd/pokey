@@ -42,5 +42,7 @@ task build, "Builds debug version":
     switch("path", "vendor/opengl/src")
     switch("path", "vendor/x11")
     switch("path", "commonlib")
+    switch("passL", "vendor/lib/microui.o")
+    switch("cincludes", "vendor/microui/src")
     switch("out", outName)
 

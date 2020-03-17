@@ -19,6 +19,7 @@ const
 
 var strokes: seq[int8]  ## Coordinate pairs, or EndLines, or EndLetter.
 var letters: seq[(char, int32)] ## Lookup for index of letters into the strokes seq.
+var maxLetterHeight: int32 ## Max height of all the letters, for scale = 1
 
 proc letter(c: char; lines: openarray[int8]) = 
   ## Defines the strokes for a letter.  Should be called in ascending order, 
@@ -27,6 +28,21 @@ proc letter(c: char; lines: openarray[int8]) =
   add(letters, (c, int32(len(strokes))))
   add(strokes, lines)
   add(strokes, EndLetter)
+
+  var i = 0
+  var onY = false
+  while i < len(lines):
+    let n = lines[i]
+
+    if n < 0:
+      onY = false
+      i += 1
+      continue
+
+    if onY:
+      maxLetterHeight = max(maxLetterHeight, int32(n))
+    inc i
+    onY = not onY
 
 proc init*() = 
   ## Initializes the letters.  Should be called before any other module function.
@@ -115,10 +131,10 @@ proc renderLetter(batch: VertBatch[VtxColor,uint16];  c: char; topLeft: V2f; sca
       result.y = max(result.y, max(p1.y, p2.y))
       addLine(batch, VtxColor(pos: p1 + topLeft, color: color), VtxColor(pos: p2 + topLeft, color: color))
 
+const LetterSpace = 2.0f
 proc text*(batch: VertBatch[VtxColor,uint16]; msg: string; topLeft: V2f; scale: float32 = 1.0f; color: V4f = WhiteG) : V2f {.discardable.} = 
   ## Renders the string at the given location. Does not wrap text. 
   ## Optionally returns the extent of the text rendered.
-  const LetterSpace = 2.0f
   var pos = topLeft
 
   for c in msg:
@@ -129,6 +145,30 @@ proc text*(batch: VertBatch[VtxColor,uint16]; msg: string; topLeft: V2f; scale: 
       pos.x += ext.x + LetterSpace * scale
 
   result = (pos.x, LetterHtScaleX1 * scale)
+
+proc textWidth*(msg: string; scale: float32 = 1.0) : float32 = 
+  ## Calculates the width of the given text.
+  var x = 0.0f
+
+  for c in msg:
+    if c == ' ':
+      x += LetterSpace*2*scale
+    else:
+      var maxX = 0.0f
+      let loc = findLetter(c)
+
+      if loc >= 0:
+        for (p1, p2) in lines(loc, scale):
+          maxX = max(p1.x*scale, maxX)
+          maxX = max(p2.x*scale, maxX)
+
+        x += maxX + LetterSpace*scale
+
+  return x
+
+proc fontHeight*(scale: float32) : float32 = 
+  ## Height of a line of text, for the given scale.
+  return float32(maxLetterHeight) * scale
 
 when isMainModule:
   import opengl, sdl2, zstats

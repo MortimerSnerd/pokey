@@ -1,6 +1,6 @@
 import 
-  blocksets, glstate, glsupport, geom, handlers, opengl, 
-  platform, sdl2, sdl2/image, strformat, tilesets, verts, vfont, zstats
+  blocksets, glstate, glsupport, geom, handlers, microui, opengl, 
+  platform, sdl2, sdl2/image, strformat, tilesets, ui, verts, vfont, zstats
 
 const
   WW=800
@@ -11,6 +11,8 @@ type
     ts: Tileset
     bss: BlockSetSys
     bs: BlockSet
+    ctx: UIContext
+    buffy: array[30, char]
 
 proc tcDraw(bc: Controller, gls: var GLState, dT: float32) = 
   let c = TestController(bc) # This will raise InvalidObjectConversion if something goes wrong.
@@ -24,7 +26,7 @@ proc tcDraw(bc: Controller, gls: var GLState, dT: float32) =
   clear(gls.txbatch3)
   bindAndConfigureArray(gls.vtxs, TxVtxDesc)
   glEnable(GL_BLEND)
-  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   withTileset(c.ts, gls):
     draw(c.ts, gls.txbatch3, 3, (100.0f, 100.0f) @ (64.0f, 64.0f))
     draw(c.bss, c.bs, c.ts, gls.txbatch3, (200.0f, 200.0f), 0, 2)
@@ -37,7 +39,22 @@ proc tcDraw(bc: Controller, gls: var GLState, dT: float32) =
   text(gls.colorb, "Eat more cheese", (100.0f, 100.0f), 1.5f)
   submitAndDraw(gls.colorb, gls.vtxs, gls.indices, GL_LINES)
 
-proc tcHandleInput(c: Controller, dT: float32) : (InHandlerStatus, Controller) = 
+  mu_begin(c.ctx)
+
+  if mu_begin_window(c.ctx, "Test Window", mu_Rect(x: 200, y: 200, w: 300, h: 200)) != 0:
+    var cols = [cint(111), -1]
+    mu_layout_row(c.ctx, 2, addr cols[0], 0)
+    mu_label(c.ctx, "Something:")
+    discard mu_textbox_ex(c.ctx, addr c.buffy[0], cint(len(c.buffy)), 0)
+    mu_label(c.ctx, "Nope")
+    mu_label(c.ctx, "Mana")
+    mu_end_window(c.ctx)
+
+  mu_end(c.ctx)
+
+  render(c.ctx, gls)
+
+proc tcHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) = 
   var ev{.noinit.}: sdl2.Event
 
   while pollEvent(ev):
@@ -49,6 +66,9 @@ proc tcHandleInput(c: Controller, dT: float32) : (InHandlerStatus, Controller) =
         return (Finished, nil)
       else:
         discard
+
+    let c = TestController(bc)
+    ui.feed(c.ctx, ev)
 
   return (Running, nil)
 
@@ -69,11 +89,14 @@ proc runLoop(gls: var GLState, ts: var Tileset) =
   let cm = newControllerManager()
   var running = true
   var tpret: int = 0
+  var rset: ResourceSet
 
   let tc = TestController(bss: newBlockSetSys(), ts: ts, handleInput: tcHandleInput, draw: tcDraw, 
-                             activated: tcActivated)
+                             activated: tcActivated, ctx: ui.init(rset, "icons.png", 32))
+  defer: ui.destroy(tc.ctx)
   add(cm, tc)
-  add(cm, newBlockSetEditor(tc.bss, tc.ts))
+  #add(cm, newBlockSetEditor(tc.bss, tc.ts))
+  sdl2.startTextInput()
 
   while running:
     frameStart(gls)
@@ -87,7 +110,7 @@ proc go() =
   var allRes: ResourceSet
   let imgflags = IMG_INIT_PNG.cint
 
-  assert sdl2.init(INIT_VIDEO) == SdlSuccess, $sdl2.getError()
+  assert sdl2.init(INIT_EVERYTHING) == SdlSuccess, $sdl2.getError()
   assert image.init(imgflags) == imgflags, $sdl2.getError()
 
   let window = glsupport.init(allRes) do () -> WindowPtr:

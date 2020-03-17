@@ -7,3 +7,6 @@
 [submodule "vendor/x11"]
 	path = vendor/x11
 	url = https://github.com/nim-lang/x11
+[submodule "vendor/microui"]
+	path = vendor/microui
+	url = https://github.com/rxi/microui.git

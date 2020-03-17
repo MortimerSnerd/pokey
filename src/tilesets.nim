@@ -55,7 +55,7 @@ proc aboutToDraw*(ts: TileSet; gls: var GLState) =
   glActiveTexture(GL_TEXTURE0)
   glBindTexture(GL_TEXTURE_2D, ts.tex.handle)
   glEnable(GL_BLEND)
-  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
   use(gls.txShader)
   clear(gls.txbatch3)
   bindAndConfigureArray(gls.vtxs, TxVtxDesc)
