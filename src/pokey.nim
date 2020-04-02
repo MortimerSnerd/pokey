@@ -7,12 +7,15 @@ const
   WH=480
 
 type
+  TCReason = enum
+    None, BlockSetEdit
+
   TestController = ref object of Controller
-    ts: Tileset
-    bss: BlockSetSys
-    bs: BlockSet
+    bb: BuildingBlocks
     ctx: UIContext
     buffy: array[30, char]
+    bse: BlocksetEditor
+    pauseReason: TCReason
 
 proc tcDraw(bc: Controller, gls: var GLState, dT: float32) = 
   let c = TestController(bc) # This will raise InvalidObjectConversion if something goes wrong.
@@ -27,9 +30,9 @@ proc tcDraw(bc: Controller, gls: var GLState, dT: float32) =
   bindAndConfigureArray(gls.vtxs, TxVtxDesc)
   glEnable(GL_BLEND)
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-  withTileset(c.ts, gls):
-    draw(c.ts, gls.txbatch3, 3, (100.0f, 100.0f) @ (64.0f, 64.0f))
-    draw(c.bss, c.bs, c.ts, gls.txbatch3, (200.0f, 200.0f), 0, 2)
+  withTileset(c.bb.ts, gls):
+    draw(c.bb.ts, gls.txbatch3, 3, (100.0f, 100.0f) @ (64.0f, 64.0f))
+    draw(c.bb.blocks, 0, c.bb.ts, gls.txbatch3, (200.0f, 200.0f), 0, 2)
     submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
     glDisable(GL_BLEND)
 
@@ -56,6 +59,7 @@ proc tcDraw(bc: Controller, gls: var GLState, dT: float32) =
 
 proc tcHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) = 
   var ev{.noinit.}: sdl2.Event
+  let c = TestController(bc)
 
   while pollEvent(ev):
     if ev.kind == QuitEvent:
@@ -64,26 +68,36 @@ proc tcHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) 
       case ev.key.keysym.sym
       of K_ESCAPE:
         return (Finished, nil)
+      of sdl2.K_B:
+        c.pauseReason = BlockSetEdit
+        c.bse = newBlocksetEditor(c.bb, c.ctx)
+        return (Running, c.bse)
       else:
         discard
 
-    let c = TestController(bc)
     ui.feed(c.ctx, ev)
 
   return (Running, nil)
 
+proc tcResumed(cc: Controller) = 
+  let c = TestController(cc)
+
+  if c.pauseReason == BlockSetEdit:
+    echo &"BSET: {c.bb.blocks}"
+    c.bse = nil
+
 proc tcActivated(bc: Controller) = 
   let c = TestController(bc)
 
-  c.bs = c.bss.newBlockSet([TilePlacement(dx: 0, dy: 0, tile: 0), 
-                    TilePlacement(dx: 1, dy: 0, tile: 1),
-                    TilePlacement(dx: 2, dy: 0, tile: 2), 
-                    TilePlacement(dx: 0, dy: 1, tile: 8), 
-                    TilePlacement(dx: 1, dy: 1, tile: 9), 
-                    TilePlacement(dx: 2, dy: 1, tile: 10), 
-                    TilePlacement(dx: 0, dy: 2, tile: 16),
-                    TilePlacement(dx: 1, dy: 2, tile: 17), 
-                    TilePlacement(dx: 2, dy: 2, tile: 18)])
+# newBlockSetInto(c.bb.blocks, [TilePlacement(dx: 0, dy: 0, tile: 0),
+#                   TilePlacement(dx: 1, dy: 0, tile: 1),
+#                   TilePlacement(dx: 2, dy: 0, tile: 2),
+#                   TilePlacement(dx: 0, dy: 1, tile: 8),
+#                   TilePlacement(dx: 1, dy: 1, tile: 9),
+#                   TilePlacement(dx: 2, dy: 1, tile: 10),
+#                   TilePlacement(dx: 0, dy: 2, tile: 16),
+#                   TilePlacement(dx: 1, dy: 2, tile: 17),
+#                   TilePlacement(dx: 2, dy: 2, tile: 18)])
 
 proc runLoop(gls: var GLState, ts: var Tileset) = 
   let cm = newControllerManager()
@@ -91,11 +105,12 @@ proc runLoop(gls: var GLState, ts: var Tileset) =
   var tpret: int = 0
   var rset: ResourceSet
 
-  let tc = TestController(bss: newBlockSetSys(), ts: ts, handleInput: tcHandleInput, draw: tcDraw, 
-                             activated: tcActivated, ctx: ui.init(rset, "icons.png", 32))
+  let tc = TestController(bb: newBuildingBlocks(ts), handleInput: tcHandleInput, draw: tcDraw, 
+                             activated: tcActivated, resumed: tcResumed, ctx: ui.init(rset, "icons.png", 32))
   defer: ui.destroy(tc.ctx)
   add(cm, tc)
   #add(cm, newBlockSetEditor(tc.bss, tc.ts))
+  add(cm, newTilesetEditor(tc.ctx, "platformertiles.png", 32))
   sdl2.startTextInput()
 
   while running:
