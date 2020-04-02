@@ -136,10 +136,8 @@ type
 
     ui: UIContext
 
-    origLen: int
-      ## Original length of the BuildingBlocks.bss.  We use this
-      ## to calc the block num of the tile we're editing, and to 
-      ## undo the changes on cancel.
+    targetBlock: int
+      ## Index of the bloc being edited.
 
     curTile: int
       ## Tile that will be drawn when the mouse button is clicked.
@@ -273,13 +271,13 @@ proc changeTile(c: BlocksetEditor, mouseX, mouseY: cint, tile: int) =
   let dy = uint8(gridPos.y)
 
   # If there's already a TilePlacement for this location, change it.
-  for tp in placements(c.bb.blocks, c.origLen):
+  for tp in placements(c.bb.blocks, c.targetBlock):
     if tp.dx == dx and tp.dy == dy:
       tp.tile = uint16(tile)
       return
 
   # Doesn't exist, so add a tile.
-  addInto(c.bb.blocks, c.origLen, TilePlacement(dx: dx, dy: dy, tile: uint16(tile)))
+  addInto(c.bb.blocks, c.targetBlock, TilePlacement(dx: dx, dy: dy, tile: uint16(tile)))
 
 proc bseResumed(bc: Controller) = 
   let c = BlocksetEditor(bc)
@@ -291,40 +289,37 @@ proc bseHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
   var ev{.noinit.}: sdl2.Event
   let c = BlocksetEditor(bc)
 
-  while pollEvent(ev):
-    case ev.kind
-    of QuitEvent:
-      return (Finished, nil)
+  result = (Running, nil)
 
-    of KeyUp:
-      case ev.key.keysym.sym
-      of K_ESCAPE:
-        return (Finished, nil)
-      of K_T:
-        c.pickedTile = -1
-        return (Running, newTilePicker(c.bb.ts, c.pickedTile.addr))
+  while pollEvent(ev):
+    if keyReleased(ev, K_ESCAPE, {}):
+      result = (Finished, nil)
+    elif keyReleased(ev, K_T, {Control}):
+      c.pickedTile = -1
+      result = (Running, newTilePicker(c.bb.ts, c.pickedTile.addr))
+    else:
+      case ev.kind
+      of QuitEvent:
+        result = (Finished, nil)
+
+      of MouseButtonDown:
+        if ev.button.button == BUTTON_LEFT and not windowContainsPoint(c.ui, ev.button.x, ev.button.y):
+          changeTile(c, ev.button.x, ev.button.y, c.curTile)
+
+      of MouseWheel:
+        if ev.wheel.y > 0:
+          c.curTile += 1
+        elif ev.wheel.y < 0:
+          c.curTile -= 1
+
+        c.curTile = wrapToRange(c.bb.ts, c.curTile)
+
       else:
         discard
 
-    of MouseButtonDown:
-      
-      if ev.button.button == BUTTON_LEFT and not windowContainsPoint(c.ui, ev.button.x, ev.button.y):
-        changeTile(c, ev.button.x, ev.button.y, c.curTile)
+      ui.feed(c.ui, ev)
 
-    of MouseWheel:
-      if ev.wheel.y > 0:
-        c.curTile += 1
-      elif ev.wheel.y < 0:
-        c.curTile -= 1
-
-      c.curTile = wrapToRange(c.bb.ts, c.curTile)
-
-    else:
-      discard
-
-    ui.feed(c.ui, ev)
-
-  return (Running, nil)
+  return result
 
 proc bseDraw(bc: Controller; gls: var GLState; dT: float32) = 
   let c = BlocksetEditor(bc)
@@ -335,7 +330,7 @@ proc bseDraw(bc: Controller; gls: var GLState; dT: float32) =
   glViewport(0, 0, gls.wWi, gls.wHi)
 
   aboutToDraw(c.bb.ts, gls)
-  draw(c.bb.blocks, c.origLen, c.bb.ts, gls.txbatch3, (0.0f, 0.0f))
+  draw(c.bb.blocks, c.targetBlock, c.bb.ts, gls.txbatch3, (0.0f, 0.0f))
 
   # Draw scaled current tile in top right of window.
   let curTl = (gls.wW - gridDim*2, 0.0f)
@@ -354,7 +349,7 @@ proc bseDraw(bc: Controller; gls: var GLState; dT: float32) =
     var cols = [cint(111), -1]
     mu_layout_row(c.ui, 2, addr cols[0], 0)
     mu_label(c.ui, "Name:")
-    let blk = addr c.bb.blocks[c.origLen]
+    let blk = addr c.bb.blocks[c.targetBlock]
     discard mu_textbox_ex(c.ui, addr blk.name[0], sizeof(blk.name).cint, 0) 
     mu_end_window(c.ui)
 
@@ -368,13 +363,18 @@ proc bseDeactivated*(cc: Controller) =
   # Otherwise, block is added, caller can look at origLen to get the index of the new block
   # if needed.
 
-proc newBlocksetEditor*(bb: BuildingBlocks; ui: UIContext) : BlocksetEditor = 
+proc newBlocksetEditor*(bb: BuildingBlocks; ui: UIContext; blockIndex: int = -1) : BlocksetEditor = 
   ## Create a new blocket editor that's ready to be a controller.
-  result = BlocksetEditor(bb: bb, ui: ui, origLen: len(bb.blocks), 
+  ## If blockIndex < 0, creates a new empty blockset, and edits that.
+  assert blockIndex < len(bb.blocks)
+  result = BlocksetEditor(bb: bb, ui: ui, 
+                           targetBlock: if blockIndex < 0: len(bb.blocks) else: blockIndex, 
                            handleInput: bseHandleInput, draw: bseDraw, resumed: bseResumed, 
                            deactivated: bseDeactivated) 
-  # Add an empty blockset to start with.
-  add(bb.blocks, BlockSet(num: 0))
+
+  if blockIndex < 0:
+    # Add an empty blockset to edit.
+    add(bb.blocks, BlockSet(num: 0))
 
 type
   TilesetEditor* = ref object of Controller
@@ -421,7 +421,7 @@ proc tedHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
 
   # Respond to any gui button presses from the last draw call.
   if c.editIdx >= 0:
-    echo &"Ja, edit {c.editIdx}"
+    result = (Running, newBlocksetEditor(c.bb, c.ui, c.editIdx))
   elif c.deleteIdx >= 0:
     del(c.bb.blocks, c.deleteIdx)
 
