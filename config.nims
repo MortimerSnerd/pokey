@@ -6,7 +6,7 @@ task build, "Builds debug version":
     else:
       outName = "dist/pokey"
 
-    setCommand "cpp", "src/pokey"
+    setCommand "c", "src/pokey"
 
     # Debuggery
     --debuginfo:on
@@ -27,6 +27,7 @@ task build, "Builds debug version":
     --threads:on
     --threadAnalysis:on
     --define: debug
+    #--define: release
 
     --warnings:on
     --hints:on
@@ -35,7 +36,7 @@ task build, "Builds debug version":
     --infChecks:on
     --overflowChecks:on  # This is expensive for what we're doing.
 
-    #--gc:arc
+    --gc:arc
 
     switch("path", "src")
     switch("path", "vendor/sdl2/src")
