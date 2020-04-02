@@ -11,8 +11,7 @@ type
     icons: Tileset
 
 proc vfont_text_width(font: mu_Font, text: cstring, len: cint) : cint {.cdecl.} = 
-  result = cint(ceil(textWidth($text, TextScale)))
-  echo &"text width {result}"
+  cint(ceil(textWidth($text, TextScale)))
 
 proc vfont_text_height(font: mu_Font) : cint {.cdecl.} = 
   cint(ceil(fontHeight(TextScale)))
@@ -25,6 +24,7 @@ proc init*(rset: var ResourceSet; file: string; gridDim: Positive = 16) : UICont
   ctx.text_width = vfont_text_width
   ctx.text_height = vfont_text_height
 
+  #ctx.style.colors[MU_COLOR_BORDER] = mu_Color(r: 0, g: 255, b: 0, a: 255)
   return UIContext(ctx: ctx, 
                    icons: initTileset(rset, file, gridDim))
 
@@ -72,6 +72,8 @@ proc render*(c: var UIContext; gls: var GLState) =
         VtxColor(pos: (tl.x, br.y), color: color)
       ])
       glEnable(GL_BLEND)
+      use(gls.solidColor)
+      bindAndConfigureArray(gls.vtxs, VtxColorDesc)
       submitAndDraw(gls.colorb, gls.vtxs, gls.indices, GL_TRIANGLES)
 
     of MU_COMMAND_CLIP:
@@ -82,8 +84,6 @@ proc render*(c: var UIContext; gls: var GLState) =
 
     of MU_COMMAND_ICON:
       #echo &"ICON {cmd.icon}"
-      clear(gls.txbatch3)
-      use(gls.txShader)
       withTileset(c.icons, gls):
         let dest = (float32(cmd.icon.rect.x), float32(cmd.icon.rect.y)) @ (float32(cmd.icon.rect.w), float32(cmd.icon.rect.h))
         draw(c.icons, gls.txbatch3, cmd.icon.id - 1, dest)
@@ -116,6 +116,20 @@ let ctrlkeys = [
   (K_RETURN, cint(MU_KEY_RETURN)), 
   (K_BACKSPACE, cint(MU_KEY_BACKSPACE))
 ]
+
+proc windowContainsPoint*(uc: UIContext; x, y: cint) : bool =
+  ## Can be uses to check to see if the mouse is over a window, to 
+  ## see if we need to send an event to feed().  Only necessary because
+  ## microui only handles part of the screen.
+  for i in 0..<MU_CONTAINERPOOL_SIZE:
+    if uc.ctx.containers[i].open != 0:
+      let r = addr uc.ctx.containers[i].rect;
+      let bl = mu_Vec2(x: r.x + r.w, y: r.y + r.h)
+
+      if x >= r.x and x < bl.x and y >= r.y and y < bl.y:
+        return true
+
+  return false
 
 proc feed*(c: UIContext; ev: sdl2.Event) = 
   ## Whenever a UI is active, this should be called for any SDL2 events
@@ -161,6 +175,28 @@ proc mu_draw_text*(ctx: ptr mu_Context; font: mu_Font; str: string;
                   pos: mu_Vec2; color: mu_Color) = 
   ## Helper with no extra string length parameter for nim strings.
   mu_draw_text(ctx, font, str, cint(len(str)), pos, color)
+
+proc brRect*(gls: GLState; w, h: cint) : mu_Rect = 
+  ## Returns a rectangle for the bottom right of the screen, with
+  ## the given dimensions.
+  mu_Rect(x: gls.wWi - w, y: gls.wHi - h, w: w, h: h)
+
+proc blRect*(gls: GLState; w, h: cint) : mu_Rect = 
+  ## Returns rectangle for bottom left of screen with the
+  ## given dimesions.
+  mu_Rect(x: 0, y: gls.wHi - h, w: w, h: h)
+
+proc centeredRect*(gls: GLState; w, h: cint) : mu_Rect = 
+  ## Returns rectangle centered on the screen.
+  let cp = vec2(gls.wWi div 2, gls.wHi div 2)
+  let hw = w div 2
+  let hh = h div 2
+
+  mu_Rect(x: cp.x - hw, y: cp.y - hh, w: w, h: h)
+
+proc layout_row*(ui: var UIContext; rows: openarray[cint]; height: cint) = 
+  ## Helper to reduce clutter of decls needed to call mu_layout_row
+  mu_layout_row(ui.ctx, len(rows).cint, unsafeAddr rows[0], height)
 
 ## TODO a proc to register a texture and srcRect as an "icon", and return an id for it that
 ## can be passed into mu_* functions.
