@@ -261,7 +261,7 @@ proc internalFormatFor(s: SurfacePtr) : GLenum =
     of 4:
         result = GL_RGBA
     else:
-        raise newException(ValueError, "Could not determine format: " & repr(s.format[]))
+        raise newException(ValueError, "Could not determine format: " & $s.format[])
 
 proc formatFor(s: SurfacePtr; internFormat: GLenum) : GLenum = 
     # Whats the right pixel format for glTexImage2D?
