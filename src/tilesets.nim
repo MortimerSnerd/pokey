@@ -11,7 +11,7 @@ type
     tileTopLefts: seq[V2f] ## Topleft texture coordinates for each tile.
     tileTexDim: V2f ## Width and height of a tile in texture coordinates.
 
-  BadTileDims = object of Exception
+  BadTileDims = object of ValueError
 
 proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tileset {.raises: [GLError, ValueError, BadTileDims, IOError].} = 
   ## Initializes a tileset, raising an exception if the texture can not be loaded, 
