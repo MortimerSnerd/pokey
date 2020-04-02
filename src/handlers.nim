@@ -121,6 +121,7 @@ proc processFrame*(cm: ControllerManager; gls: var GLState; dT: float32) : bool 
       dec(cnum)
 
     # Now draw controllers in order.
+    frameStart(gls)
     while cnum < nc:
       let ct = cm.cs[cnum]
       if ct.draw != nil:
