@@ -1,5 +1,8 @@
 import
-  geom, glstate, glsupport, opengl, sdl2, strformat, verts
+  chunks, chunktypes, geom, glstate, glsupport, opengl, sdl2, 
+  streams, strformat, verts
+
+const TsVer = 1
 
 type
   Tileset* = object
@@ -12,6 +15,9 @@ type
     tileTexDim: V2f ## Width and height of a tile in texture coordinates.
 
   BadTileDims = object of ValueError
+
+proc emptyTileset*() : Tileset = 
+  Tileset(gridDim: 1)
 
 proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tileset {.raises: [GLError, ValueError, BadTileDims, IOError].} = 
   ## Initializes a tileset, raising an exception if the texture can not be loaded, 
@@ -46,6 +52,26 @@ proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tile
 
   # Transfer to callers resource set so we don't blow away the texture on exit.
   rset.take(lset)
+
+proc serialize*(ss: Stream; ts: var Tileset) = 
+  ## Just save enough info so we can call initTileset to reload everything.
+  write(ss, Chunk(kind: ctTileset, version: TsVer))
+  writeString(ss, ts.file)
+  write(ss, ts.gridDim)
+
+proc deserialize*(ss: Stream; rset: var ResourceSet; ts: var Tileset) = 
+  var ch: Chunk
+  read(ss, ch, ctTileset)
+
+  expectVersion(TsVer, ch.version, "Tileset")
+  var imgFile: string
+  readString(ss, imgFile)
+  var gridDim: int
+  read(ss, gridDim)
+  if gridDim <= 0:
+    raise newException(BadChunk, &"Negative grid dimensions for tileset: {gridDim}")
+
+  ts = initTileset(rset, imgFile, gridDim)
 
 proc numTiles*(ts: Tileset) : int = len(ts.tileTopLefts)
 

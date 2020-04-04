@@ -11,7 +11,7 @@ type
     None, BlockSetEdit
 
   TestController = ref object of Controller
-    bb: BuildingBlocks
+    bb: BlockFile
     ctx: UIContext
     buffy: array[30, char]
     bse: BlocksetEditor
@@ -99,13 +99,13 @@ proc tcActivated(bc: Controller) =
 #                   TilePlacement(dx: 1, dy: 2, tile: 17),
 #                   TilePlacement(dx: 2, dy: 2, tile: 18)])
 
-proc runLoop(gls: var GLState, ts: var Tileset) = 
+proc runLoop(gls: var GLState) = 
   let cm = newControllerManager()
   var running = true
   var tpret: int = 0
   var rset: ResourceSet
 
-  let tc = TestController(bb: newBuildingBlocks(ts), handleInput: tcHandleInput, draw: tcDraw, 
+  let tc = TestController(bb: loadBlockFile("platformertiles.png", rset), handleInput: tcHandleInput, draw: tcDraw, 
                              activated: tcActivated, resumed: tcResumed, ctx: ui.init(rset, "icons.png", 32))
   defer: ui.destroy(tc.ctx)
   add(cm, tc)
@@ -138,13 +138,12 @@ proc go() =
   assert surface != nil, $sdl2.getError()
 
   var gls = initGLState(window)
-  var ts1 = initTileset(gls.rset, "platformertiles.png", 32)
 
   #showCursor(false)
   vfont.init()
 
   try:
-    runLoop(gls, ts1)
+    runLoop(gls)
     echo GC_getStatistics()
     zstats.printReport()
   except:
