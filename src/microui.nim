@@ -158,7 +158,7 @@ type
     id* {.importc: "id".}: cint
     color* {.importc: "color".}: mu_Color
 
-  mu_Command* {.importc: "mu_Command", header: "microui.h", bycopy.} = object {.union.}
+  mu_Command* {.importc: "mu_Command", header: "microui.h", bycopy, union.} = object 
     `type`* {.importc: "type".}: cint
     base* {.importc: "base".}: mu_BaseCommand
     jump* {.importc: "jump".}: mu_JumpCommand
