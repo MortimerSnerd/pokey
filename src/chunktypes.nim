@@ -6,4 +6,5 @@ type
     ## existing files.  Only add to the end.
     ctBlocksetSys, 
     ctBlockset, 
-    ctBlockfile
+    ctBlockFile,
+    ctTileset,

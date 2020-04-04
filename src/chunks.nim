@@ -30,6 +30,10 @@ proc expect*(ct: ChunkType; ch: Chunk) =
     if ct != ch.kind:
       raise newException(BadChunk, &"Expecting {ct} but got {ch}")
 
+proc expectVersion*(expected, got: int16, what: string) = 
+    if expected != got:
+      raise newException(BadChunk, &"{what} expected version={expected}, but got {got}")
+
 proc cksum(c: Chunk) : Hash = 
   ## For now, we're being cheesy and just using a hash
   ## for the checksum, which it probably sufficient.
@@ -56,7 +60,7 @@ proc write*(s: Stream; c: Chunk) =
   ## Writes a chunk to the stream.
   var mc = c
   mc.cksum = cksum(c)
-  write(s, mc)
+  writeData(s, unsafeAddr mc, sizeof(c))
 
 proc writeSeq*[T](s: Stream; arr: var openarray[T]; serFn: SerFn[T] = nil) = 
   ## Writes an array of items to the stream.  If ``serFn`` is provided, 
@@ -91,3 +95,21 @@ proc readSeq*[T](s: Stream; arr: var seq[T]; desFn: DesFn[T] = nil) =
     else:
       for i in 0..<alen:
         desFn(s, arr[i])
+
+proc writeString*(ss: Stream, str: string) = 
+  ## Writes a counted string out to the stream.
+  write(ss, len(str))
+  if len(str) > 0:
+    writeData(ss, unsafeAddr str[0], len(str))
+
+proc readString*(ss: Stream, str: var string) = 
+  ## Reads a counted string from a stream.
+  var sl: int
+  read(ss, sl)
+  if sl < 0:
+    raise newException(BadChunk, "Negative length read for counted string.")
+  elif sl > 0:
+    str = newString(sl)
+    if readData(ss, addr str[0], sl) != sl:
+      raise newException(BadChunk, "Unexpected EOF reading string")
+
