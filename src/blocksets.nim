@@ -2,7 +2,7 @@
 ## that can be placed.
 import
   chunks, chunktypes, geom, glstate, glsupport, handlers, 
-  input, microui, opengl, os, sdl2, streams, strformat, 
+  input, microui, opengl, os, platform, sdl2, streams, strformat, 
   tilesets, ui, verts
 
 const
@@ -24,7 +24,7 @@ type
     places: array[BSSize, TilePlacement]
     name*: array[8, char]
 
-  BuildingBlocks* = ref object
+  BlockFile* = ref object
     ## Association of blocksets to the tileset they reference.
     ## BlockSet's are expected to only make sense for a particular
     ## tileset, as no ordering is enforced between different sets.
@@ -36,22 +36,48 @@ type
 const
   SerVer = 0
 
-proc newBuildingBlocks*(ts: Tileset) : BuildingBlocks = 
-  ## Creates a new empty BuildingBlocks.
-  BuildingBlocks(ts: ts)
+proc newBlockFile*(ts: Tileset) : BlockFile = 
+  ## Creates a new empty BlockFile.
+  BlockFile(ts: ts)
 
-proc serialize*(ss: Stream; bs: BlockSet) = 
+proc emptyBlockFile*() : BlockFile = 
+  BlockFile(ts: emptyTileset())
+
+proc serializeBlockset*(ss: Stream; bs: BlockSet) = 
   write(ss, Chunk(kind: ctBlockset, version: SerVer))
   write(ss, bs)
 
-proc deserialize*(ss: Stream; bs: var BlockSet) = 
+proc deserializeBlockset*(ss: Stream; bs: var BlockSet) = 
   var ch: Chunk
   read(ss, ch, ctBlockset)
-
-  if ch.version != SerVer:
-    raise newException(BadChunk, &"Unexpected BlockSet version {ch.version}")
-
+  expectVersion(SerVer, ch.version, "BlockSet")
   read(ss, bs)
+
+proc serialize*(ss: Stream; bb: BlockFile) = 
+  write(ss, Chunk(kind: ctBlockFile, version: SerVer))
+  writeSeq(ss, bb.blocks, serializeBlockset)
+  serialize(ss, bb.ts)
+
+proc deserialize(ss: Stream; rset: var ResourceSet; bb: var BlockFile) = 
+  var ch: Chunk
+  read(ss, ch, ctBlockFile)
+  expectVersion(SerVer, ch.version, "BlockFile")
+  readSeq(ss, bb.blocks, deserializeBlockset)
+  deserialize(ss, rset, bb.ts)
+
+proc blkFileFor(imgFile: string) : string = 
+  ## Build absolute blk file path from img file path.
+  return platform_data_path(imgFile & ".blk")
+
+proc loadBlockFile*(imgFile: string; rset: var ResourceSet) : BlockFile = 
+  ## Loads a new BlockFile for the given imgFile, and returns it.
+  let blkFile = blkFileFor(imgFile)
+  let ss = newFileStream(open(blkFile, fmRead))
+  try:
+    result = emptyBlockFile()
+    deserialize(ss, rset, result)
+  finally:
+    close(ss)
 
 proc addInto*(dest: var seq[BlockSet]; blkNum: int; tp: TilePlacement) = 
   ## Adds a tile placement into the BlockSet at blkNum.
@@ -99,6 +125,27 @@ proc newBlockSetInto*(dest: var seq[BlockSet]; pcs: openarray[TilePlacement]) =
 
     add(dest, bs)
 
+proc numOverflowBlocks(bss: seq[BlockSet]; blk: Natural) : Natural = 
+  ## For a given block, returns the number of overflow blocks associated
+  ## with it.  Not valid to call this with ``blk`` pointing to an overflow block/
+  assert bss[blk].num >= 0
+  var bi = blk + 1
+  while bi < len(bss) and bss[bi].num < 0:
+    inc(result)
+
+proc isOverflowBlock(bs: Blockset) : bool = 
+  ## Returns true if this blockset isn't the start of a blockset, but
+  ## overflow for a previous blockset.
+  return bs.num < 0
+
+proc deleteBlockset(bss: var seq[BlockSet]; blk: Natural) = 
+  ## Deletes the blockset at the given index.  
+  assert(not isOverflowBlock(bss[blk]))
+  let no = numOverflowBlocks(bss, blk)
+
+  for i in countdown(blk + no, blk):
+    delete(bss, i)
+
 iterator placements*(bss: var seq[BlockSet]; blkNum: int) : var TilePlacement = 
     if blkNum < len(bss):
       let np = bss[blkNum].num
@@ -131,7 +178,7 @@ proc mouseToGridPos(ts: TileSet;  x, y: cint) : V2f =
 
 type
   BlocksetEditor* = ref object of Controller
-    bb: BuildingBlocks
+    bb: BlockFile
       ## Association of the set of blocks and a TileSet
 
     ui: UIContext
@@ -363,7 +410,7 @@ proc bseDeactivated*(cc: Controller) =
   # Otherwise, block is added, caller can look at origLen to get the index of the new block
   # if needed.
 
-proc newBlocksetEditor*(bb: BuildingBlocks; ui: UIContext; blockIndex: int = -1) : BlocksetEditor = 
+proc newBlocksetEditor*(bb: BlockFile; ui: UIContext; blockIndex: int = -1) : BlocksetEditor = 
   ## Create a new blocket editor that's ready to be a controller.
   ## If blockIndex < 0, creates a new empty blockset, and edits that.
   assert blockIndex < len(bb.blocks)
@@ -374,7 +421,7 @@ proc newBlocksetEditor*(bb: BuildingBlocks; ui: UIContext; blockIndex: int = -1)
 
   if blockIndex < 0:
     # Add an empty blockset to edit.
-    add(bb.blocks, BlockSet(num: 0))
+    add(result.bb.blocks, BlockSet(num: 0))
 
 type
   TilesetEditor* = ref object of Controller
@@ -392,7 +439,7 @@ type
       ## relative path to the blk file that contains the per tile
       ## and blockset information.
 
-    bb: BuildingBlocks
+    bb: BlockFile
       ## Tileset and blocks being edited, possibly loaded from imgFile and blkFile.
 
     editIdx, deleteIdx: int
@@ -401,9 +448,14 @@ type
       ## These are -1 if there was no input, or the index of a blockset if the edit or 
       ## delete buttons were pressed.
 
-proc blkFileFor(imgFile: string) : string = 
-  ## Build blk file path from img file path.
-  return imgFile & ".blk"
+    doSave, doCancel: bool
+      ## Cancel or save button pressed in GUI.
+
+proc clearGuiInputs(c: TilesetEditor) = 
+  c.editIdx = -1
+  c.deleteIdx = -1
+  c.doSave = false
+  c.doCancel = false
 
 proc tedHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) = 
   var ev{.noinit.}: sdl2.Event
@@ -413,20 +465,31 @@ proc tedHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
 
   while pollEvent(ev):
     if ev.kind == QuitEvent or keyReleased(ev, K_ESCAPE, {}):
-      return (Finished, nil)
+      result = (Finished, nil)
+      break
     elif keyReleased(ev, sdl2.K_B, {Control}):
-      return (Running, newBlocksetEditor(c.bb, c.ui))
+      result = (Running, newBlocksetEditor(c.bb, c.ui))
+      break
     else:
       ui.feed(c.ui, ev)
 
-  # Respond to any gui button presses from the last draw call.
-  if c.editIdx >= 0:
-    result = (Running, newBlocksetEditor(c.bb, c.ui, c.editIdx))
-  elif c.deleteIdx >= 0:
-    del(c.bb.blocks, c.deleteIdx)
+  if result[0] != Finished:
+    # Respond to any gui button presses from the last draw call.
+    if c.editIdx >= 0:
+      result = (Running, newBlocksetEditor(c.bb, c.ui, c.editIdx))
+    elif c.deleteIdx >= 0:
+      deleteBlockset(c.bb.blocks, c.deleteIdx)
+    elif c.doSave:
+      result = (Finished, nil)
+      let ss = newFileStream(open(blkFileFor(c.imgFile), fmWrite))
+      try:
+        serialize(ss, c.bb)
+      finally:
+        close(ss)
+    elif c.doCancel:
+      result = (Finished, nil)
 
-  c.editIdx = -1
-  c.deleteIdx = -1
+  clearGuiInputs(c)
 
   return result
 
@@ -437,8 +500,7 @@ proc tedDraw(bc: Controller; gls: var GLState; dT: float32) =
   setUniforms(gls)
   glViewport(0, 0, gls.wWi, gls.wHi)
 
-  c.editIdx = -1
-  c.deleteIdx = -1
+  clearGuiInputs(c)
 
   let wrect = centeredRect(gls, gls.wWi * 3 div 4, gls.wHi * 3 div 4)
 
@@ -448,17 +510,26 @@ proc tedDraw(bc: Controller; gls: var GLState; dT: float32) =
     mu_begin_panel(c.ui, "Borks")
     layout_row(c.ui, [wrect.w div 2, wrect.w div 4, wrect.w div 4], 0)
     for i in 0..<len(c.bb.blocks):
-      mu_push_id(c.ui, unsafeAddr i, 8) 
-      mu_label(c.ui, addr c.bb.blocks[i].name[0])
-      if mu_button(c.ui, "edit") != 0:
-        c.editIdx = i
-      if mu_button(c.ui, "delete") != 0:
-        c.deleteIdx = i
-      mu_pop_id(c.ui)
+      if not isOverflowBlock(c.bb.blocks[i]):
+        mu_push_id(c.ui, unsafeAddr i, 8) 
+        mu_label(c.ui, addr c.bb.blocks[i].name[0])
+        if mu_button(c.ui, "edit") != 0:
+          c.editIdx = i
+        if mu_button(c.ui, "delete") != 0:
+          c.deleteIdx = i
+        mu_pop_id(c.ui)
 
     mu_end_panel(c.ui)
-    mu_end_window(c.ui)
 
+    layout_row(c.ui, [-(wrect.w + 40) div 4, wrect.w div 8, wrect.w div 8], 0)
+    discard mu_layout_next(c.ui)
+    if mu_button(c.ui, "Cancel") != 0:
+      c.doCancel = true
+
+    if mu_button(c.ui, "Save") != 0:
+      c.doSave = true
+
+    mu_end_window(c.ui)
 
   mu_end(c.ui)
   render(c.ui, gls)
@@ -468,14 +539,13 @@ proc newTilesetEditor*(ui: UIContext; imgFile: string; gridDim: Positive) : Tile
   ## ``imgFile`` must exist, or an IOError will be raised.
   ## If there is no corresponding block file a new one will be created
   ## on the next save operation.
-  let r = TilesetEditor(ui: ui, imgFile: imgFile, editIdx: -1, 
+  result = TilesetEditor(ui: ui, imgFile: imgFile, blkFile: blkFileFor(imgFile), editIdx: -1, 
                             deleteIdx: -1, handleInput: tedHandleInput,
                             draw: tedDraw)
-  let ts = initTileset(r.rset, imgFile, gridDim)
-  r.bb = newBuildingBlocks(ts)
-  r.blkFile = blkFileFor(imgFile)
 
-  if existsFile(r.blkFile):
-    echo "should probably implement block file loading"
+  if existsFile(result.blkFile):
+    result.bb = loadBlockFile(result.imgFile, result.rset)
+  else:
+    let ts = initTileset(result.rset, imgFile, gridDim)
+    result.bb = newBlockFile(ts)
 
-  return r
