@@ -121,9 +121,9 @@ proc windowContainsPoint*(uc: UIContext; x, y: cint) : bool =
   ## Can be uses to check to see if the mouse is over a window, to 
   ## see if we need to send an event to feed().  Only necessary because
   ## microui only handles part of the screen.
-  for i in 0..<MU_CONTAINERPOOL_SIZE:
-    if uc.ctx.containers[i].open != 0:
-      let r = addr uc.ctx.containers[i].rect;
+  for i in 0..<uc.ctx.root_list.idx:
+    if uc.ctx.root_list.items[i].open != 0:
+      let r = addr uc.ctx.root_list.items[i].rect;
       let bl = mu_Vec2(x: r.x + r.w, y: r.y + r.h)
 
       if x >= r.x and x < bl.x and y >= r.y and y < bl.y:
