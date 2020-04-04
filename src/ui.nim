@@ -1,14 +1,13 @@
 ## Implementation glue for microui + utility functions.
 import 
   comalg, glstate, glsupport, geom, math, microui, opengl, sdl2, 
-  strformat, tilesets, verts, vfont
+  strformat, verts, vfont
 
 const TextScale = 1.0
 
 type
   UIContext* = object 
     ctx: ptr mu_Context
-    icons: Tileset
 
 proc vfont_text_width(font: mu_Font, text: cstring, len: cint) : cint {.cdecl.} = 
   cint(ceil(textWidth($text, TextScale)))
@@ -25,8 +24,7 @@ proc init*(rset: var ResourceSet; file: string; gridDim: Positive = 16) : UICont
   ctx.text_height = vfont_text_height
 
   #ctx.style.colors[MU_COLOR_BORDER] = mu_Color(r: 0, g: 255, b: 0, a: 255)
-  return UIContext(ctx: ctx, 
-                   icons: initTileset(rset, file, gridDim))
+  return UIContext(ctx: ctx)
 
 proc destroy*(c: var UIContext) = 
   ## Should be called to release the context when you're done with it.
@@ -84,10 +82,40 @@ proc render*(c: var UIContext; gls: var GLState) =
 
     of MU_COMMAND_ICON:
       #echo &"ICON {cmd.icon}"
-      withTileset(c.icons, gls):
-        let dest = (float32(cmd.icon.rect.x), float32(cmd.icon.rect.y)) @ (float32(cmd.icon.rect.w), float32(cmd.icon.rect.h))
-        draw(c.icons, gls.txbatch3, cmd.icon.id - 1, dest)
-        submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+      let r = addr cmd.icon.rect
+      let tl = vec2(float32(r.x), float32(r.y))
+      let br = vec2(float32(r.x + r.w), float32(r.y + r.h))
+      let color = glColor(cmd.icon.color)
+
+      clear(gls.colorb)
+      drawingLines(gls, {Submit}):
+        case cmd.icon.id:
+        of MU_ICON_CLOSE:
+          addLine(gls.colorb, 
+                  VtxColor(pos: tl, color: color), 
+                  VtxColor(pos: br, color: color))
+          addLine(gls.colorb, 
+                  VtxColor(pos: (br.x, tl.y), color: color), 
+                  VtxColor(pos: (tl.x, br.y), color: color))
+
+        of MU_ICON_CHECK:
+          addLine(gls.colorb, 
+                  VtxColor(pos: (br.x, tl.y), color: color), 
+                  VtxColor(pos: (tl.x, br.y), color: color))
+
+        of MU_ICON_COLLAPSED:
+          addLines(gls.colorb, 
+                   tl @ vec2(float32(r.w), float32(r.h)), 
+                   proc (v: V2f, num: int) : VtxColor = 
+                     VtxColor(pos: v, color: color))
+
+        of MU_ICON_EXPANDED: 
+          addLine(gls.colorb, 
+                  VtxColor(pos: (tl.x, br.y), color: color), 
+                  VtxColor(pos: br, color: color))
+
+        else:
+          discard
 
     else:
       #echo &"WOT {cmd.`type`}"
