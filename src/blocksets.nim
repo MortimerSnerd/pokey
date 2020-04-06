@@ -132,6 +132,7 @@ proc numOverflowBlocks(bss: seq[BlockSet]; blk: Natural) : Natural =
   var bi = blk + 1
   while bi < len(bss) and bss[bi].num < 0:
     inc(result)
+    inc(bi)
 
 proc isOverflowBlock(bs: Blockset) : bool = 
   ## Returns true if this blockset isn't the start of a blockset, but
@@ -448,7 +449,7 @@ type
       ## These are -1 if there was no input, or the index of a blockset if the edit or 
       ## delete buttons were pressed.
 
-    doSave, doCancel: bool
+    doSave, doCancel, doEditProps: bool
       ## Cancel or save button pressed in GUI.
 
 proc clearGuiInputs(c: TilesetEditor) = 
@@ -456,6 +457,7 @@ proc clearGuiInputs(c: TilesetEditor) =
   c.deleteIdx = -1
   c.doSave = false
   c.doCancel = false
+  c.doEditProps = false
 
 proc tedHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller) = 
   var ev{.noinit.}: sdl2.Event
@@ -469,6 +471,9 @@ proc tedHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
       break
     elif keyReleased(ev, sdl2.K_B, {Control}):
       result = (Running, newBlocksetEditor(c.bb, c.ui))
+      break
+    elif keyReleased(ev, sdl2.K_T, {Control}):
+      result = (Running, newTilesetPropertyEditor(c.ui, addr c.bb.ts))
       break
     else:
       ui.feed(c.ui, ev)
@@ -488,6 +493,8 @@ proc tedHandleInput(bc: Controller, dT: float32) : (InHandlerStatus, Controller)
         close(ss)
     elif c.doCancel:
       result = (Finished, nil)
+    elif c.doEditProps:
+      result = (Running, newTilesetPropertyEditor(c.ui, addr c.bb.ts))
 
   clearGuiInputs(c)
 
@@ -506,12 +513,12 @@ proc tedDraw(bc: Controller; gls: var GLState; dT: float32) =
 
   mu_begin(c.ui)
   if mu_begin_window(c.ui, "Tileset", wrect) != 0:
-    layout_row(c.ui, [cint(-1)], -25)
+    layout_row(c.ui, [cint(-1)], -60)
     mu_begin_panel(c.ui, "Borks")
     layout_row(c.ui, [wrect.w div 2, wrect.w div 4, wrect.w div 4], 0)
     for i in 0..<len(c.bb.blocks):
       if not isOverflowBlock(c.bb.blocks[i]):
-        mu_push_id(c.ui, unsafeAddr i, 8) 
+        mu_push_id(c.ui, unsafeAddr i, sizeof(i).cint) 
         mu_label(c.ui, addr c.bb.blocks[i].name[0])
         if mu_button(c.ui, "edit") != 0:
           c.editIdx = i
@@ -520,6 +527,10 @@ proc tedDraw(bc: Controller; gls: var GLState; dT: float32) =
         mu_pop_id(c.ui)
 
     mu_end_panel(c.ui)
+
+    layout_row(c.ui, [-20.cint], 0)
+    if mu_button(c.ui, "Edit Tile Properties") != 0:
+      c.doEditProps = true
 
     layout_row(c.ui, [-(wrect.w + 40) div 4, wrect.w div 8, wrect.w div 8], 0)
     discard mu_layout_next(c.ui)

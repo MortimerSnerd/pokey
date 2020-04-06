@@ -1,10 +1,13 @@
 import
-  chunks, chunktypes, geom, glstate, glsupport, opengl, sdl2, 
-  streams, strformat, verts
+  chunks, chunktypes, geom, glstate, glsupport, handlers, 
+  input, microui, opengl, sdl2, streams, strformat, ui, verts
 
-const TsVer = 1
+const TsVer = 2
 
 type
+  TileProps* = enum
+    BlocksCharacters,   ## Blocks movement through tile from all directions.
+
   Tileset* = object
     ## A tileset for an image divided up into uniform gridDim x gridDim 
     ## tiles.
@@ -13,6 +16,7 @@ type
     gridDim*: Positive ## Tiles are forced to be square, gridDim*gridDim
     tileTopLefts: seq[V2f] ## Topleft texture coordinates for each tile.
     tileTexDim: V2f ## Width and height of a tile in texture coordinates.
+    properties: seq[set[TileProps]]
 
   BadTileDims = object of ValueError
 
@@ -43,6 +47,7 @@ proc initTileset*(rset: var ResourceSet; file: string, gridDim: Positive) : Tile
   result.tileTexDim = (float32(gridDim) / float32(result.tex.width), 
                        float32(gridDim) / float32(result.tex.height))
 
+  setLen(result.properties, tw*th)
   setLen(result.tileTopLefts, tw*th)
   var idx = 0
   for y in 0..<th:
@@ -58,12 +63,15 @@ proc serialize*(ss: Stream; ts: var Tileset) =
   write(ss, Chunk(kind: ctTileset, version: TsVer))
   writeString(ss, ts.file)
   write(ss, ts.gridDim)
+  writeSeq(ss, ts.properties)
 
 proc deserialize*(ss: Stream; rset: var ResourceSet; ts: var Tileset) = 
   var ch: Chunk
   read(ss, ch, ctTileset)
 
-  expectVersion(TsVer, ch.version, "Tileset")
+  if ch.version notin [1,2]:
+    raise newException(BadChunk, &"Unexpected Tileset version {ch.version}")
+
   var imgFile: string
   readString(ss, imgFile)
   var gridDim: int
@@ -72,6 +80,7 @@ proc deserialize*(ss: Stream; rset: var ResourceSet; ts: var Tileset) =
     raise newException(BadChunk, &"Negative grid dimensions for tileset: {gridDim}")
 
   ts = initTileset(rset, imgFile, gridDim)
+  readSeq(ss, ts.properties)
 
 proc numTiles*(ts: Tileset) : int = len(ts.tileTopLefts)
 
@@ -116,4 +125,107 @@ proc wrapToRange*(ts: Tileset; tileIdx: int) : int =
   else:
     return tileIdx
 
+type
+  TilesetPropertyEditor* = ref object of Controller
+    ## GUI that allows you to change per-tile properties
+    ## for the tiles in a Tileset.
+    ui: UIContext
 
+    tset: Tileset
+      ## Tileset that's being edited.
+
+    srcTset: ptr Tileset
+      ## This is the tileset we copy to if the user saves.
+
+    curTile: Natural
+      ## Which tile is currently having its properties edited.
+
+    doCancel, doSave: bool
+      ## Are the cancel or save buttons pressed?
+
+proc tpeHandleInput(cc: Controller; dT: float32) : (InHandlerStatus, Controller) = 
+  var ev{.noinit.}: sdl2.Event
+  let c = TilesetPropertyEditor(cc)
+
+  result = (Running, nil)
+  while pollEvent(ev):
+    if ev.kind == QuitEvent or keyReleased(ev, K_ESCAPE, {}):
+      result = (Finished, nil)
+      break
+    else:
+      ui.feed(c.ui, ev)
+
+  if c.doCancel:
+    result = (Finished, nil)
+  elif c.doSave:
+    c.srcTset[] = c.tset
+    result = (Finished, nil)
+
+  return result
+
+proc tpeDraw(cc: Controller; gls: var GLState; dT: float32) = 
+  let c = TilesetPropertyEditor(cc)
+
+  fullScreenOrtho(gls)
+  setUniforms(gls)
+  glViewport(0, 0, gls.wWi, gls.wHi)
+
+  let wrect = centeredRect(gls, gls.wWi * 3 div 4, gls.wHi * 3 div 4)
+  var tileLocs: seq[V2f]
+  var panel: ptr mu_Container
+  const nProps = ord(high(TileProps)) + 1
+  let cwi = (gls.wWi - cint(c.tset.gridDim) - 4) div nProps
+  var tileCols: array[1 + nProps, cint] = [cint(c.tset.gridDim) + 4, cwi]
+  
+  mu_begin(c.ui)
+  if mu_begin_window(c.ui, "Tileset Properties", wrect) != 0:
+    layout_row(c.ui, [cint(-20)], -60)
+    mu_begin_panel(c.ui, "Tiles")
+    panel = mu_get_current_container(c.ui)
+    for i in 0..<numTiles(c.tset):
+      layout_row(c.ui, tileCols, cint(c.tset.gridDim) + 5)
+      let r = mu_layout_next(c.ui)
+      add(tileLocs, (r.x.float32, r.y.float32))
+      for tp in TileProps:
+        var st = if tp in c.tset.properties[i]: cint(-1) else: cint(0)
+        let id = (tp, i)
+        mu_push_id(c.ui, unsafeAddr id, sizeof(id).cint)
+        discard mu_checkbox(c.ui, $tp, addr st)
+        if st != 0:
+          incl(c.tset.properties[i], tp)
+        else:
+          excl(c.tset.properties[i], tp)
+        mu_pop_id(c.ui)
+
+    mu_end_panel(c.ui)
+
+    layout_row(c.ui, [-(wrect.w + 40) div 4, wrect.w div 8, wrect.w div 8], 0)
+    discard mu_layout_next(c.ui)
+    c.doCancel = mu_button(c.ui, "Cancel") != 0
+    c.doSave = mu_button(c.ui, "Save") != 0
+
+    mu_end_window(c.ui)
+
+  mu_end(c.ui)
+  render(c.ui, gls)
+
+  if panel != nil:
+    # Now use our saved position to render the tiles in the correct location for the gui.
+    let gdims = vec2(c.tset.gridDim.float32, c.tset.gridDim.float32)
+
+    glEnable(GL_SCISSOR_TEST)
+    glScissor(panel.rect.x, gls.wHi - (panel.rect.y + panel.rect.h), panel.rect.w, panel.rect.h);
+    withTileset(c.tset, gls):
+      for i, loc in pairs(tileLocs):
+        draw(c.tset, gls.txbatch3, i, loc @ gdims)
+
+      submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+    glScissor(0, 0, gls.wWi, gls.wHi)
+    glDisable(GL_SCISSOR_TEST)
+
+proc newTilesetPropertyEditor*(ui: UIContext; ts: ptr Tileset) : TilesetPropertyEditor = 
+  ## Creates a new property edtitor for the tileset.  ``ts`` must have a lifetime
+  ## greater than this editor.  (which is usually implied given the stack discipline of
+  ## controllers in the handlers module.
+  result = TilesetPropertyEditor(ui: ui, tset: ts[], srcTset: ts, curTile: 0, 
+                                     handleInput: tpeHandleInput, draw: tpeDraw)
