@@ -1,6 +1,6 @@
 import 
   blocksets, glstate, glsupport, geom, handlers, microui, opengl, 
-  platform, sdl2, sdl2/image, strformat, tilesets, ui, verts, vfont, zstats
+  platform, sdl2, sdl2/image, strformat, tilesets, tfont, ui, verts, vfont, zstats
 
 const
   WW=800
@@ -141,6 +141,10 @@ proc go() =
 
   #showCursor(false)
   vfont.init()
+
+  #DEBUGGERY
+  let tf = newTFont(platform_data_path("fonts/roboto.ttf"), 12)
+  defer: disposeOf(tf)
 
   try:
     runLoop(gls)

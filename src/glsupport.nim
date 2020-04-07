@@ -6,7 +6,7 @@ import
     geom, opengl, platform, sdl2, sdl2/image, strformat, zstats
 
 type
-    ResourceKind = enum
+    ResourceKind* = enum
       rkBuffer, rkTexture, rkShader, rkProgram, rkFrameBuffer, rkVertexArray
 
     ResourceSet* = object
