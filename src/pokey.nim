@@ -143,7 +143,7 @@ proc go() =
   vfont.init()
 
   #DEBUGGERY
-  let tf = newTFont(platform_data_path("fonts/roboto.ttf"), 12)
+  let tf = newTFont(platform_data_path("fonts/roboto.ttf"), 14)
   defer: disposeOf(tf)
 
   try:

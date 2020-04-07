@@ -235,6 +235,18 @@ proc mkTexture*(w, h: int) : Texture =
   result.height = h
   result.target = GL_TEXTURE_2D
 
+proc upload*(t: Texture; s: SurfacePtr) = 
+  ## Uploads the bytes from the given surface to 
+  ## the texture. 
+  assert t.width == s.w.int
+  assert t.height == s.h.int
+  glBindTexture(GL_TEXTURE_2D, t.iHandle)
+  resetPixelStoreVars()
+  textureBytesUploadedPerFrame += t.width * t.height * 4  # Assuming RGBA8
+  glTexImage2D(GL_TEXTURE_2D, GLint(0), GLint(t.fmt), 
+               GLsizei(t.width), GLsizei(t.height), GLint(0), 
+               t.ifmt, t.dataType, cast[ptr byte](s.pixels))
+
 proc mkTexture(data: ptr byte; w, h: int;  format = GL_RGBA; internFormat = GL_RGBA; dataType = GL_UNSIGNED_BYTE) : Texture {.gl.} = 
   ## Helper function for loadTexture functions.
   result = mkTexture(w, h)
