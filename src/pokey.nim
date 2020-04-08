@@ -16,6 +16,7 @@ type
     buffy: array[30, char]
     bse: BlocksetEditor
     pauseReason: TCReason
+    fonty: TFont
 
 proc tcDraw(bc: Controller, gls: var GLState, dT: float32) = 
   let c = TestController(bc) # This will raise InvalidObjectConversion if something goes wrong.
@@ -25,22 +26,25 @@ proc tcDraw(bc: Controller, gls: var GLState, dT: float32) =
   glViewport(0, 0, gls.wWi, gls.wHi)
 
   #TODO need a shader that takes a texture, umkay.
-  use(gls.txShader)
-  clear(gls.txbatch3)
-  bindAndConfigureArray(gls.vtxs, TxVtxDesc)
-  glEnable(GL_BLEND)
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-  withTileset(c.bb.ts, gls):
-    draw(c.bb.ts, gls.txbatch3, 3, (100.0f, 100.0f) @ (64.0f, 64.0f))
-    draw(c.bb.blocks, 0, c.bb.ts, gls.txbatch3, (200.0f, 200.0f), 0, 2)
-    submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
-    glDisable(GL_BLEND)
+  if false:
+    use(gls.txShader)
+    clear(gls.txbatch3)
+    bindAndConfigureArray(gls.vtxs, TxVtxDesc)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    withTileset(c.bb.ts, gls):
+      draw(c.bb.ts, gls.txbatch3, 3, (100.0f, 100.0f) @ (64.0f, 64.0f))
+      draw(c.bb.blocks, 0, c.bb.ts, gls.txbatch3, (200.0f, 200.0f), 0, 2)
+      submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+      glDisable(GL_BLEND)
 
-  use(gls.solidColor)
-  bindAndConfigureArray(gls.vtxs, VtxColorDesc)
-  clear(gls.colorb)
-  text(gls.colorb, "Eat more cheese", (100.0f, 100.0f), 1.5f)
-  submitAndDraw(gls.colorb, gls.vtxs, gls.indices, GL_LINES)
+    use(gls.solidColor)
+    bindAndConfigureArray(gls.vtxs, VtxColorDesc)
+    clear(gls.colorb)
+    text(gls.colorb, "Eat more cheese", (100.0f, 100.0f), 1.5f)
+    submitAndDraw(gls.colorb, gls.vtxs, gls.indices, GL_LINES)
+
+  drawText(c.fonty, gls, (100.0f, 300.0f), "This smells of ass.\u2014")
 
   mu_begin(c.ctx)
 
@@ -104,9 +108,13 @@ proc runLoop(gls: var GLState) =
   var running = true
   var tpret: int = 0
   var rset: ResourceSet
+  #DEBUGGERY
+  let tf = newTFont(platform_data_path("fonts/roboto.ttf"), 40)
+  defer: disposeOf(tf)
 
   let tc = TestController(bb: loadBlockFile("platformertiles.png", rset), handleInput: tcHandleInput, draw: tcDraw, 
-                             activated: tcActivated, resumed: tcResumed, ctx: ui.init(rset, "icons.png", 32))
+                             activated: tcActivated, resumed: tcResumed, ctx: ui.init(rset, "icons.png", 32), 
+                             fonty: tf)
   defer: ui.destroy(tc.ctx)
   add(cm, tc)
   #add(cm, newBlockSetEditor(tc.bss, tc.ts))
@@ -142,9 +150,6 @@ proc go() =
   #showCursor(false)
   vfont.init()
 
-  #DEBUGGERY
-  let tf = newTFont(platform_data_path("fonts/roboto.ttf"), 14)
-  defer: disposeOf(tf)
 
   try:
     runLoop(gls)

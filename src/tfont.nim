@@ -1,7 +1,8 @@
 ## TTF font support, where letters are cached to a
 ## texture.
 import
-    geom, glsupport, opengl, sdl2, sdl2/ttf, strformat, unicode
+    bitops, geom, glstate, glsupport, opengl, sdl2, sdl2/ttf, strformat, unicode, 
+    verts
 
 const
     # Dimensions of cache textures.
@@ -24,7 +25,7 @@ type
           ## backing surface.
 
     RuneMetric = object
-        xadvance: float32
+        xadvance: int
         tc: AABB2f
           ## Texture coords.
         page: byte
@@ -52,6 +53,41 @@ proc findLetter(tf: TFont; r: Rune) : int =
     if tf.letters[i] == r:
       result = i
       break
+
+iterator letterPositions(tf: TFont; s: string; pos: var V2i) : (Rune, V2i, AABB2f, int, int) = 
+  ## Yields Rune, pos relative to start, texture coordinate 
+  ## bounding box, the page, and the xadvance
+  ## for each rune in the string.  Assumes all of the needed
+  ## runes are cached.  If that's not true, it will skip letters it can't find.
+  let startpos = pos
+  for r in runes(s):
+    if r == Rune(32):
+      let li = findLetter(tf, Rune(ord('w')))
+
+      if li >= 0:
+        yield (r, pos, (0.0f, 0.0f) @ (0.0f, 0.0f), 0, tf.metrics[li].xadvance)
+        pos.x += tf.metrics[li].xadvance
+    elif int(r) == ord('\n'):
+      pos.y += fontHeight(tf.font).int + 2
+      pos.x = startpos.x
+    else:
+      let li = findLetter(tf, r)
+
+      if li >= 0:
+        yield (r, pos, tf.metrics[li].tc, tf.metrics[li].page.int, tf.metrics[li].xadvance)
+        pos.x += tf.metrics[li].xadvance
+
+proc textWidth*(tf: TFont; msg: string) : float32 = 
+  var pos = vec2(0, 0)
+
+  for r, cpos, tc, page, xadvance in letterPositions(tf, msg, pos):
+    result = max(result, float32(pos.x))
+
+  return float32(pos.x)
+
+proc fontHeight*(tf: TFont) : int = 
+  fontHeight(tf.font)
+
 
 proc addUnknownRune(tf: TFont; r: Rune) = 
   ## Adds `r` as an unknown rune, that displays as a ?
@@ -113,10 +149,51 @@ proc maybeCacheUnknownLetters(tf: TFont; txt: string) : int =
 
           if ok:
             add(tf.letters, r)
-            add(tf.metrics, RuneMetric(xadvance: advance.float32, tc: tc, page: tf.curPage.byte))
+            add(tf.metrics, RuneMetric(xadvance: advance, tc: tc, page: tf.curPage.byte))
             result = result or 1 shl tf.curPage
           else:
             addUnknownRune(tf, r)
+
+proc drawText*(tf: TFont; gls: var GLState; pos: V2f; msg: string; z: float32 = 0) = 
+  ## Draws the text onto the screen.  Sets up the GL state to do the drawing.
+  var lastPage = -1
+  var relPos = vec2(0, 0)
+
+  var pageMask = maybeCacheUnknownLetters(tf, msg) #TODO check bitmask for updated pages.
+  var page = 0
+  while pageMask > 0:
+    if bitand(pageMask, 1) != 0:
+      upload(tf.txts[page], tf.backingSurfs[page])
+    pageMask = pageMask shr 1
+    inc(page)
+
+  use(gls.txShader)
+  glActiveTexture(GL_TEXTURE0)
+  glEnable(GL_BLEND)
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+  use(gls.txShader)
+  clear(gls.txbatch3)
+  bindAndConfigureArray(gls.vtxs, TxVtxDesc)
+
+  let h = float32(fontHeight(tf.font)) #TODO bad, need to do per letter.
+  for r, cpos, tc, page, xadvance in letterPositions(tf, msg, relPos):
+    let tl = vec2(cpos.x.float32, cpos.y.float32) + pos
+    let w = float32(xadvance)
+    let tcbr = tc.bottomRight
+
+    if page != lastPage:
+      lastPage = page
+      submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
+      clear(gls.txbatch3)
+      glBindTexture(GL_TEXTURE_2D, tf.txts[page].handle)
+
+    triangulate(gls.txbatch3, [
+      TxVtx(pos: vec3(tl.x, tl.y, z), tc: tc.topLeft), 
+      TxVtx(pos: vec3(tl.x + w, tl.y, z), tc: (tcbr.x, tc.topLeft.y)), 
+      TxVtx(pos: vec3(tl.x + w, tl.y + h, z), tc: tcbr), 
+      TxVtx(pos: vec3(tl.x, tl.y + h, z), tc: (tc.topLeft.x, tcbr.y))])
+
+  submitAndDraw(gls.txbatch3, gls.vtxs, gls.indices, GL_TRIANGLES)
 
 
 proc newTFont*(path: string, ptsize: Positive) : TFont =
