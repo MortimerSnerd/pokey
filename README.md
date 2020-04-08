@@ -32,12 +32,13 @@ assigning integers to the fields.
   - fall
   - collide with BlockCharacter rects from the Blocksets
 
-- TTF font support
-  - Previously, have used guillotine partitioning to 
+✓ TTF font support
+  ~~- Previously, have used guillotine partitioning to 
     divide up a texture into areas the TTF library can
     cache into.  It can be a little complicated, and can 
-    have interesting fragmentation issues.
-  - Possible simplification 1: Have a per-font/size glyph
+    have interesting fragmentation issues.~~
+  ✓ Change ui support to use ttf fonts instead of debug vector fonts. 
+  ✓ Possible simplification 1: Have a per-font/size glyph
     cache, that we subdivide vertically into font-height 
     strips.  Letters go into those as we encounter them. 
     No expectatation that a character will be removed from 
@@ -45,8 +46,9 @@ assigning integers to the fields.
     non-monospaced fonts.  Slightly more complicated than 
     just generating a bitmap font from a TTF, but allows chars
     we didn't anticipate.
-  - Possible simplification 2: Cache sentences, but using same
+  - Add escapes and change buffers so coloring can change within a text?
+  ~~- Possible simplification 2: Cache sentences, but using same
     per font/size cache with a texture vertically divided 
     into font-height strips. Perhaps more efficient, but more
     bookkeeping needs to be done, as pieces of text will be 
-    expiring constantly.
+    expiring constantly.~~

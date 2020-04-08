@@ -1,7 +1,7 @@
 ## Implementation glue for microui + utility functions.
 import 
-  comalg, glstate, glsupport, geom, math, microui, opengl, sdl2, 
-  strformat, verts, vfont
+  comalg, glstate, glsupport, geom, math, microui, opengl, platform, 
+  sdl2, strformat, verts, tfont
 
 const TextScale = 1.0
 
@@ -9,19 +9,23 @@ type
   UIContext* = object 
     ctx: ptr mu_Context
 
-proc vfont_text_width(font: mu_Font, text: cstring, len: cint) : cint {.cdecl.} = 
-  cint(ceil(textWidth($text, TextScale)))
+var uifont: TFont = nil
 
-proc vfont_text_height(font: mu_Font) : cint {.cdecl.} = 
-  cint(ceil(fontHeight(TextScale)))
+proc tfont_text_width(font: mu_Font, text: cstring, len: cint) : cint {.cdecl.} = 
+  cint(textWidth(uifont, $text))
+
+proc tfont_text_height(font: mu_Font) : cint {.cdecl.} = 
+  cint(fontHeight(uifont))
 
 proc init*(rset: var ResourceSet; file: string; gridDim: Positive = 16) : UIContext = 
   ## Initializes the module, and returns a context for creating UIs.
   ## ``file`` is the image atlas that has the icon images defined.
   let ctx = create(mu_Context, 1)
   mu_init(ctx)
-  ctx.text_width = vfont_text_width
-  ctx.text_height = vfont_text_height
+  ctx.text_width = tfont_text_width
+  ctx.text_height = tfont_text_height
+
+  uifont = newTFont(platform_data_path("fonts/uifont.ttf"), 14)
 
   #ctx.style.colors[MU_COLOR_BORDER] = mu_Color(r: 0, g: 255, b: 0, a: 255)
   return UIContext(ctx: ctx)
@@ -51,10 +55,8 @@ proc render*(c: var UIContext; gls: var GLState) =
     case cmd.`type`
     of MU_COMMAND_TEXT:
       #echo &"TEXT {cmd.text}"
-      clear(gls.colorb)
-      drawingLines(gls, {Submit}):
-        text(gls.colorb, $cast[cstring](addr cmd.text.str[0]), vec2(float32(cmd.text.pos.x), float32(cmd.text.pos.y)), TextScale, 
-             cmd.text.color.glColor)
+      drawText(uifont, gls, vec2(float32(cmd.text.pos.x), float32(cmd.text.pos.y)), 
+               $cast[cstring](addr cmd.text.str[0]))
 
     of MU_COMMAND_RECT:
       #echo &"RECT {cmd.rect}"
